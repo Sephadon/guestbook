@@ -15,6 +15,7 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class BookController extends AbstractController
 {
@@ -42,10 +43,20 @@ class BookController extends AbstractController
     // Cette méthode permet de créer un nouveau livre.
     // 
     #[Route('/api/books', name: 'createBook', methods: ['POST'])]
-    public function createBook(Request $request, SerializerInterface $serializer, EntityManagerInterface $em, UrlGeneratorInterface $urlGenerator, AuthorRepository $authorRepository): JsonResponse
+    public function createBook(Request $request, SerializerInterface $serializer, EntityManagerInterface $em, UrlGeneratorInterface $urlGenerator, AuthorRepository $authorRepository, ValidatorInterface $validator): JsonResponse
     {
         $book = $serializer->deserialize($request->getContent(), Book::class, 'json');
-        // Récipération de l'ensemble des données envoyées sous forme de tableau
+
+        // On verifie les erreurs
+        $errors = $validator->validate($book);
+        if ($errors->count() > 0) {
+            return new JsonResponse($serializer->serialize($errors, 'json'), JsonResponse::HTTP_BAD_REQUEST, [], true);
+        }
+
+        $em->persist($book);
+        $em->flush();
+
+        // Récupération de l'ensemble des données envoyées sous forme de tableau
         $content = $request->toArray();
 
         // Récupération de l'idAuthor. S'il n'est pas défini, alors on met -1 par défaut
@@ -54,9 +65,6 @@ class BookController extends AbstractController
         // On cherche l'auteur qui correspond et on l'assigne au livre
         // Si "find" ne trouve pas l'auteur, alors null sera retourné
         $book->setAuthor($authorRepository->find($idAuthor));
-
-        $em->persist($book);
-        $em->flush();
 
         $jsonBook = $serializer->serialize($book, 'json', ['groups' => 'getBooks']);
 
